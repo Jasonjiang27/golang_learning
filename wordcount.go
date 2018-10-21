@@ -125,4 +125,40 @@ func (wordcount WordCount) WordFreqCounter(files []string) {
     results := make(chan Pair, len(files)) //goroutine 将结果发送到该channel
     done := make(chan struct{}, len(files)) //每个goroutine工作完成后，发送一个空结构体到该channnel,表示工作完成
 
-    for i :=　0; i < len(files); {//
+    for i :=　0; i < len(files); {//有多少个文件就开启多沙盘个goroutine，使用匿名函数的方式
+        go func(done chan<- struct{}, results chan<-Pair,filename string){
+            wordcount := make(WordCount)
+            wordcount.UpdateFreq(filename)
+            for k, v := range wordcount {
+                pair := Pair{k, v}
+                results <- pair
+            }
+            done <- struct {}{}
+        }(done, results, files[i])
+        i++
+    }
+
+    for working := len(files); working >0; { //监听通道，直到所有的工作goroutine完成任务时才退出
+        select {
+        case pair := <-results: //接收发送到通道中的统计结果
+            wordcount[pair.Key] += pair.Value
+
+        case <-done: // 判断工作goroutine是否全部完成
+            working--
+
+        }
+    }
+DONE: //再次启动for循环处理通道中还未处理完的值
+    for {
+        select {
+        case pair := <-results:
+            wordcount[pair.Key] += pair.Value
+        default:
+            break DONE
+        }
+    }
+    close(results)
+    close(done)
+
+}
+
